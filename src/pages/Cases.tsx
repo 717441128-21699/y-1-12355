@@ -152,10 +152,20 @@ const Cases = () => {
 
     setSubmitLoading(true)
     try {
-      const result = await createTalk(currentCase.id, talkForm)
+      const result = await createTalk({
+        caseId: currentCase.id,
+        type: talkForm.type as any,
+        interviewee: talkForm.interviewee,
+        scheduledTime: talkForm.scheduledTime,
+        location: talkForm.location,
+        content: talkForm.content,
+        startTime: talkForm.scheduledTime,
+        recorder: user?.id || '',
+      })
       if (result) {
         setIsTalkModalOpen(false)
         setSuccessMessage('谈话提醒已生成，将自动通知相关人员')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {
@@ -166,9 +176,13 @@ const Cases = () => {
   const handleCompleteTalk = async (talk: TalkRecord) => {
     setSubmitLoading(true)
     try {
-      const result = await updateTalk(talk.id, { status: 'completed' })
+      const result = await updateTalk(talk.id, { 
+        status: 'completed',
+        actualTime: new Date().toISOString(),
+      })
       if (result) {
         setSuccessMessage('谈话已完成，可上传录音录像资料')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {
@@ -189,6 +203,7 @@ const Cases = () => {
       if (result) {
         setIsUploadModalOpen(false)
         setSuccessMessage('录音录像已上传并与笔录关联')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {
@@ -210,6 +225,7 @@ const Cases = () => {
       if (result) {
         setIsSubmitModalOpen(false)
         setSuccessMessage('案件已提交审理，流转至审理阶段')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {

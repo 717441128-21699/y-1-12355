@@ -37,8 +37,15 @@ const calculateRiskLevel = (violationType: string, amount?: number): 'low' | 'me
 
 router.get('/', (req: Request, res: Response) => {
   try {
-    const { status, riskLevel, department } = req.query;
     const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { status, riskLevel, department } = req.query;
 
     const filters = {
       status: status as string | undefined,

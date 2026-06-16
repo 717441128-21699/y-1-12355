@@ -22,8 +22,15 @@ const extractUserFromHeader = (req: Request): { userId?: string; role?: UserRole
 
 router.get('/', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { caseId, stage } = req.query;
-    const { role } = extractUserFromHeader(req);
 
     const filters = {
       caseId: caseId as string | undefined,
@@ -48,6 +55,14 @@ router.get('/', (req: Request, res: Response) => {
 
 router.get('/:id', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const approvals = dataStore.getApprovals();
     const approval = approvals.find(a => a.id === id);
@@ -74,21 +89,21 @@ router.get('/:id', (req: Request, res: Response) => {
 
 router.put('/:id/approve', (req: Request, res: Response) => {
   try {
+    const { userId, role, userName } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const { opinion, signature } = req.body;
-    const { userId, role, userName } = extractUserFromHeader(req);
 
     if (!opinion || !signature) {
       return res.status(400).json({
         success: false,
         error: '请填写审批意见并签名',
-      });
-    }
-
-    if (!userId || !role || !userName) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
       });
     }
 
@@ -122,21 +137,21 @@ router.put('/:id/approve', (req: Request, res: Response) => {
 
 router.put('/:id/reject', (req: Request, res: Response) => {
   try {
+    const { userId, role, userName } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const { opinion, signature } = req.body;
-    const { userId, role, userName } = extractUserFromHeader(req);
 
     if (!opinion || !signature) {
       return res.status(400).json({
         success: false,
         error: '请填写驳回理由并签名',
-      });
-    }
-
-    if (!userId || !role || !userName) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
       });
     }
 

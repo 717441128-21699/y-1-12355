@@ -124,7 +124,8 @@ const Approvals = () => {
             ? `审批通过！已自动流转至${nextStage}审批`
             : '审批通过！已完成全部审批流程，案件进入审查阶段'
         )
-        setTimeout(() => setSuccessMessage(''), 3000)
+        loadData()
+        setTimeout(() => setSuccessMessage(''), 5000)
       }
     } finally {
       setSubmitLoading(false)
@@ -140,7 +141,8 @@ const Approvals = () => {
       if (result) {
         setIsRejectModalOpen(false)
         setSuccessMessage('已驳回，审批流程终止')
-        setTimeout(() => setSuccessMessage(''), 3000)
+        loadData()
+        setTimeout(() => setSuccessMessage(''), 5000)
       }
     } finally {
       setSubmitLoading(false)

@@ -52,6 +52,7 @@ const Trials = () => {
     fetchTalks,
     completeTrial,
     generateDecision,
+    signTrial,
     pushExecution,
   } = useDataStore()
   const user = useAuthStore((state) => state.user)
@@ -176,6 +177,7 @@ XXXX年XX月XX日
       if (result) {
         setIsReviewModalOpen(false)
         setSuccessMessage('审理意见已提交，可生成处分决定书')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {
@@ -189,12 +191,13 @@ XXXX年XX月XX日
     setSubmitLoading(true)
     try {
       const result = await generateDecision(currentCase.id, {
-        punishmentType,
-        content: decisionContent,
+        disciplineType: punishmentType,
+        decisionContent,
       })
       if (result) {
         setIsDecisionModalOpen(false)
         setSuccessMessage('处分决定书已生成，请进行电子签名')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {
@@ -207,10 +210,14 @@ XXXX年XX月XX日
 
     setSubmitLoading(true)
     try {
-      const result = await generateDecision(currentCase.id, { signature })
+      const trial = getCaseTrial(currentCase.id)
+      if (!trial) return
+      
+      const result = await signTrial(trial.id, signature)
       if (result) {
         setIsSignModalOpen(false)
         setSuccessMessage('电子签名已完成，可推送执行')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {
@@ -227,6 +234,7 @@ XXXX年XX月XX日
       if (result) {
         setIsPushModalOpen(false)
         setSuccessMessage('处分决定书已推送至相关部门执行，案件已结案')
+        loadData()
         setTimeout(() => setSuccessMessage(''), 3000)
       }
     } finally {

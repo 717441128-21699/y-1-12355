@@ -1,12 +1,36 @@
 import express, { type Request, type Response } from 'express';
 import { dataStore } from '../dataStore.js';
 import { getDashboardStats } from '../../shared/mockData.js';
-import type { DashboardStats, CaseStatus, ViolationType } from '../../shared/types.js';
+import type { DashboardStats, CaseStatus, ViolationType, UserRole } from '../../shared/types.js';
 
 const router = express.Router();
 
+const extractUserFromHeader = (req: Request): { userId?: string; role?: UserRole } => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return {};
+  }
+  try {
+    const token = authHeader.replace('Bearer ', '');
+    const decoded = Buffer.from(token, 'base64').toString();
+    const userId = decoded.split(':')[0];
+    const user = dataStore.getUserById(userId);
+    return { userId, role: user?.role };
+  } catch {
+    return {};
+  }
+};
+
 router.get('/dashboard', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { type, department, startDate, endDate } = req.query;
 
     const cases = dataStore.getCases();
@@ -14,6 +38,12 @@ router.get('/dashboard', (req: Request, res: Response) => {
     const petitions = dataStore.getPetitions();
     const approvals = dataStore.getApprovals();
     const talks = dataStore.getTalks();
+    const users = dataStore.getUsers();
+
+    const getCaseDepartment = (caseItem: any) => {
+      const handler = users.find(u => u.id === caseItem.assignedTo);
+      return handler?.department || caseItem.involvedDepartment;
+    };
 
     let filteredCases = cases;
     let filteredClues = clues;
@@ -24,8 +54,11 @@ router.get('/dashboard', (req: Request, res: Response) => {
     }
 
     if (department) {
-      filteredCases = filteredCases.filter(c => c.involvedDepartment === department);
-      filteredClues = filteredClues.filter(c => c.involvedDepartment === department);
+      filteredCases = filteredCases.filter(c => getCaseDepartment(c) === department);
+      filteredClues = filteredClues.filter(c => {
+        const handler = users.find(u => u.id === c.assignedTo);
+        return handler?.department === department;
+      });
     }
 
     if (startDate) {
@@ -56,7 +89,8 @@ router.get('/dashboard', (req: Request, res: Response) => {
     }, {} as Record<string, number>);
 
     const casesByDepartment = filteredCases.reduce((acc, c) => {
-      acc[c.involvedDepartment] = (acc[c.involvedDepartment] || 0) + 1;
+      const dept = getCaseDepartment(c);
+      acc[dept] = (acc[dept] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
@@ -115,6 +149,14 @@ router.get('/dashboard', (req: Request, res: Response) => {
 
 router.get('/trend', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { months = '12' } = req.query;
     const numMonths = parseInt(months as string, 10);
 
@@ -161,6 +203,14 @@ router.get('/trend', (req: Request, res: Response) => {
 
 router.get('/export', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { month, year } = req.query;
     
     const now = new Date();

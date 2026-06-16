@@ -18,6 +18,7 @@ import {
   mockTrials,
   generateId,
 } from '../shared/mockData.js';
+import { PETITION_TYPE_TO_DEPARTMENT } from '../shared/types.js';
 
 let memoryStorage: Record<string, string> = {};
 
@@ -86,11 +87,26 @@ class DataStore {
     }, 5000);
   }
 
+  calculateRiskLevel(violationType: string, amount?: number): 'low' | 'medium' | 'high' {
+    const highAmount = 1000000;
+    const mediumAmount = 100000;
+
+    if (violationType === 'political' || violationType === 'economic') {
+      if (amount && amount >= highAmount) return 'high';
+      if (amount && amount >= mediumAmount) return 'medium';
+      return 'medium';
+    }
+    
+    if (amount && amount >= highAmount) return 'high';
+    if (amount && amount >= mediumAmount) return 'medium';
+    return 'low';
+  }
+
   private checkOverdue() {
     const now = new Date();
 
     this.clues.forEach(clue => {
-      if (clue.deadline && !clue.isOverdue && clue.status !== 'closed' && clue.status !== 'filed') {
+      if (clue.deadline && !clue.isOverdue && clue.status === 'pending') {
         const deadline = new Date(clue.deadline);
         if (now > deadline) {
           clue.isOverdue = true;
@@ -210,16 +226,53 @@ class DataStore {
     return this.petitions.find(p => p.id === id);
   }
 
-  createPetition(data: Omit<Petition, 'id' | 'createdAt' | 'status'>): Petition {
+  createPetition(data: Omit<Petition, 'id' | 'createdAt' | 'status' | 'assignedDepartment'>): Petition {
+    const assignedDepartment = PETITION_TYPE_TO_DEPARTMENT[data.type] || '信访室';
     const petition: Petition = {
       ...data,
       id: generateId(),
       createdAt: new Date().toISOString(),
-      status: 'pending',
+      status: 'processing',
+      assignedDepartment,
     };
     this.petitions.push(petition);
     this.saveToStorage();
     return petition;
+  }
+
+  convertPetitionToClue(petitionId: string): Clue | undefined {
+    const petition = this.getPetitionById(petitionId);
+    if (!petition) return undefined;
+
+    const violationTypeMap: Record<string, string> = {
+      corruption: 'economic',
+      dereliction: 'work',
+      malfeasance: 'work',
+      style: 'life',
+      other: 'other',
+    };
+
+    const violationType = violationTypeMap[petition.type] || 'other';
+    const riskLevel = this.calculateRiskLevel(violationType, petition.amount);
+
+    const clue = this.createClue({
+      title: petition.title,
+      description: petition.content,
+      violationType: violationType as any,
+      involvedPerson: petition.involvedPerson,
+      involvedDepartment: petition.involvedDepartment,
+      amount: petition.amount,
+      petitionId: petition.id,
+      riskLevel,
+      assignedTo: petition.assignedTo,
+    });
+
+    this.updatePetition(petitionId, {
+      status: 'converted',
+      relatedClueId: clue.id,
+    });
+
+    return clue;
   }
 
   updatePetition(id: string, data: Partial<Petition>): Petition | undefined {
@@ -257,6 +310,7 @@ class DataStore {
   }
 
   createClue(data: Omit<Clue, 'id' | 'createdAt' | 'isOverdue' | 'escalated' | 'status'>): Clue {
+    const riskLevel = data.riskLevel || this.calculateRiskLevel(data.violationType, data.amount);
     const clue: Clue = {
       ...data,
       id: generateId(),
@@ -264,6 +318,10 @@ class DataStore {
       status: 'pending',
       isOverdue: false,
       escalated: false,
+      riskLevel,
+      deadline: riskLevel === 'high' 
+        ? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() 
+        : undefined,
     };
     this.clues.push(clue);
     this.saveToStorage();
@@ -284,9 +342,7 @@ class DataStore {
     const clue = this.clues.find(c => c.id === id);
     if (clue && clue.status === 'pending') {
       clue.status = 'investigating';
-      if (clue.riskLevel === 'high') {
-        clue.deadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-      }
+      clue.deadline = undefined;
       this.saveToStorage();
       return clue;
     }
@@ -504,12 +560,27 @@ class DataStore {
     return undefined;
   }
 
-  getTrials(filters?: { caseId?: string; reviewer?: string }): TrialRecord[] {
+  getTrials(filters?: { caseId?: string; reviewer?: string; userId?: string; role?: UserRole }): TrialRecord[] {
     let result = [...this.trials];
     
     if (filters) {
       if (filters.caseId) result = result.filter(t => t.caseId === filters.caseId);
       if (filters.reviewer) result = result.filter(t => t.reviewer === filters.reviewer);
+      if (filters.role === 'handler' && filters.userId) {
+        result = result.filter(t => {
+          const caseItem = this.cases.find(c => c.id === t.caseId);
+          return caseItem?.assignedTo === filters.userId;
+        });
+      } else if (filters.role === 'dept_head' && filters.userId) {
+        const user = this.getUserById(filters.userId);
+        if (user) {
+          result = result.filter(t => {
+            const caseItem = this.cases.find(c => c.id === t.caseId);
+            const handler = caseItem?.assignedTo && this.getUserById(caseItem.assignedTo);
+            return handler?.department === user.department;
+          });
+        }
+      }
     }
     
     return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -526,8 +597,8 @@ class DataStore {
     const caseItem = this.cases.find(c => c.id === data.caseId);
     if (caseItem) {
       caseItem.trialRecord = trial;
-      caseItem.status = 'closed';
-      caseItem.currentStage = 'archived';
+      caseItem.status = 'trialing';
+      caseItem.currentStage = 'trial';
     }
     
     this.saveToStorage();

@@ -50,6 +50,7 @@ interface DataState {
   startClue: (id: string) => Promise<Clue | null>;
   
   createCase: (data: Partial<Case>) => Promise<Case | null>;
+  submitCaseForTrial: (id: string) => Promise<Case | null>;
   
   approveApproval: (id: string, data: { opinion: string; signature: string }) => Promise<ApprovalRecord | null>;
   rejectApproval: (id: string, data: { opinion: string; signature: string }) => Promise<ApprovalRecord | null>;
@@ -306,6 +307,22 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
+  submitCaseForTrial: async (id: string) => {
+    try {
+      const response = await caseApi.submitTrial(id);
+      if (response.success && response.data) {
+        set(state => ({ cases: state.cases.map(c => c.id === id ? response.data! : c) }));
+        return response.data;
+      } else {
+        set({ error: response.error || '提交审理失败' });
+        return null;
+      }
+    } catch (error) {
+      set({ error: '网络错误' });
+      return null;
+    }
+  },
+
   approveApproval: async (id: string, data: { opinion: string; signature: string }) => {
     try {
       const response = await approvalApi.approve(id, data);
@@ -433,7 +450,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   completeTrial: async (id: string, data: { reviewOpinion: string }) => {
     try {
-      const response = await trialApi.review(id, data);
+      const response = await trialApi.review(id, { ...data, opinion: data.reviewOpinion });
       if (response.success && response.data) {
         set(state => ({
           trials: state.trials.map(t =>
@@ -478,6 +495,13 @@ export const useDataStore = create<DataState>((set, get) => ({
         set(state => ({
           trials: state.trials.map(t =>
             t.id === id ? response.data! : t
+          ),
+          cases: state.cases.map(c =>
+            c.id === (response.data as any).caseId ? {
+              ...c,
+              status: 'closed',
+              currentStage: 'closed',
+            } : c
           ),
         }));
         return response.data;

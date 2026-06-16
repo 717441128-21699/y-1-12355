@@ -22,8 +22,15 @@ const extractUserFromHeader = (req: Request): { userId?: string; role?: UserRole
 
 router.get('/', (req: Request, res: Response) => {
   try {
-    const { caseId, status } = req.query;
     const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { caseId, status } = req.query;
 
     const filters = {
       caseId: caseId as string | undefined,
@@ -49,6 +56,14 @@ router.get('/', (req: Request, res: Response) => {
 
 router.get('/:id', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const talk = dataStore.getTalkById(id);
     
@@ -74,7 +89,15 @@ router.get('/:id', (req: Request, res: Response) => {
 
 router.post('/', (req: Request, res: Response) => {
   try {
-    const { caseId, title, interviewee, startTime, location, recorder } = req.body;
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { caseId, title, type, interviewee, startTime, scheduledTime, actualTime, location, recorder, content, transcript, recordingUrl, recordingType, interviewer } = req.body;
 
     if (!caseId || !title || !interviewee || !startTime || !location || !recorder) {
       return res.status(400).json({
@@ -86,11 +109,18 @@ router.post('/', (req: Request, res: Response) => {
     const talk = dataStore.createTalk({
       caseId,
       title,
+      type: (type as any) || 'reminder',
       interviewee,
       startTime,
+      scheduledTime: scheduledTime || startTime,
+      actualTime,
       location,
       recorder,
-      content: '',
+      content: content || '',
+      transcript,
+      recordingUrl,
+      recordingType,
+      interviewer,
     });
 
     res.status(201).json({
@@ -109,6 +139,14 @@ router.post('/', (req: Request, res: Response) => {
 
 router.put('/:id', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const updates = req.body;
 
@@ -137,6 +175,14 @@ router.put('/:id', (req: Request, res: Response) => {
 
 router.post('/:id/upload', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const { audioUrl, videoUrl } = req.body;
 

@@ -26,6 +26,7 @@ import {
   PetitionStatus,
   PETITION_TYPE_LABELS,
   DEPARTMENTS,
+  PETITION_TYPE_TO_DEPARTMENT,
 } from '../../shared/types'
 import { petitionApi } from '@/api/client'
 
@@ -71,19 +72,29 @@ const Petitions = () => {
   )
 
   const handleCreate = () => {
+    const defaultType = 'corruption' as PetitionType
     setCurrentPetition(null)
     setFormData({
       title: '',
       content: '',
-      type: 'corruption' as PetitionType,
-      status: 'pending' as PetitionStatus,
+      type: defaultType,
+      status: 'processing' as PetitionStatus,
       involvedPerson: '',
       involvedDepartment: '',
-      assignedDepartment: user?.department || '',
+      assignedDepartment: PETITION_TYPE_TO_DEPARTMENT[defaultType],
       informant: '',
       informantContact: '',
     })
     setIsModalOpen(true)
+  }
+
+  const handleTypeChange = (type: PetitionType) => {
+    const assignedDepartment = PETITION_TYPE_TO_DEPARTMENT[type]
+    setFormData({
+      ...formData,
+      type,
+      assignedDepartment,
+    })
   }
 
   const handleEdit = (petition: Petition) => {
@@ -151,13 +162,13 @@ const Petitions = () => {
     if (!confirm('确定要将此信访举报转为线索吗？')) return
 
     try {
-      const response = await petitionApi.update(petition.id, {
-        status: 'converted' as PetitionStatus,
-      })
+      const response = await petitionApi.convertToClue(petition.id)
       if (response.success) {
         loadData()
-        setSuccessMessage('已成功转为线索，将自动推送至线索研判模块')
-        setTimeout(() => setSuccessMessage(''), 3000)
+        const { fetchClues } = useDataStore.getState()
+        fetchClues()
+        setSuccessMessage(`已成功转为线索，线索编号：${response.data?.id}，已推送至线索研判模块`)
+        setTimeout(() => setSuccessMessage(''), 5000)
       }
     } catch (error) {
       console.error('Convert to clue error:', error)
@@ -445,7 +456,7 @@ const Petitions = () => {
             <Select
               label="举报类型"
               value={formData.type || ''}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as PetitionType })}
+              onChange={(e) => handleTypeChange(e.target.value as PetitionType)}
               options={Object.entries(PETITION_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
               required
             />
@@ -477,13 +488,21 @@ const Petitions = () => {
               onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
               placeholder="请输入涉及金额"
             />
-            <Select
-              label="承办部门"
-              value={formData.assignedDepartment || ''}
-              onChange={(e) => setFormData({ ...formData, assignedDepartment: e.target.value })}
-              options={DEPARTMENTS.map(d => ({ value: d, label: d }))}
-              required
-            />
+            <div className="relative">
+              <Select
+                label="承办部门"
+                value={formData.assignedDepartment || ''}
+                onChange={(e) => setFormData({ ...formData, assignedDepartment: e.target.value })}
+                options={DEPARTMENTS.map(d => ({ value: d, label: d }))}
+                disabled={!currentPetition}
+                required
+              />
+              {!currentPetition && (
+                <p className="text-xs text-green-600 mt-1">
+                  ✓ 系统已根据举报类型自动分派至{formData.assignedDepartment}
+                </p>
+              )}
+            </div>
             <Input
               label="举报人（选填）"
               value={formData.informant || ''}

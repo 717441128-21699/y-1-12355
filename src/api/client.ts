@@ -84,6 +84,11 @@ export const petitionApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  convertToClue: (id: string) =>
+    request<Clue>(`/petitions/${id}/convert`, {
+      method: 'PUT',
+    }),
 };
 
 export const clueApi = {
@@ -135,6 +140,11 @@ export const caseApi = {
     request<Case>(`/cases/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+
+  submitTrial: (id: string) =>
+    request<Case>(`/cases/${id}/submit-trial`, {
+      method: 'POST',
     }),
 };
 

@@ -45,10 +45,19 @@ ${opinion}
 
 router.get('/', (req: Request, res: Response) => {
   try {
-    const { caseId, reviewer } = req.query;
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { caseId } = req.query;
     const filters = {
       caseId: caseId as string | undefined,
-      reviewer: reviewer as string | undefined,
+      userId,
+      role,
     };
 
     const trials = dataStore.getTrials(filters);
@@ -68,21 +77,21 @@ router.get('/', (req: Request, res: Response) => {
 
 router.post('/:id/review', (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { opinion } = req.body;
-    const { userId, userName } = extractUserFromHeader(req);
-
-    if (!opinion) {
-      return res.status(400).json({
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
         success: false,
-        error: '请填写审理意见',
+        error: '未授权访问',
       });
     }
 
-    if (!userId || !userName) {
-      return res.status(401).json({
+    const { id } = req.params;
+    const { opinion, reviewOpinion } = req.body;
+
+    if (!opinion && !reviewOpinion) {
+      return res.status(400).json({
         success: false,
-        error: '未登录',
+        error: '请填写审理意见',
       });
     }
 
@@ -94,14 +103,28 @@ router.post('/:id/review', (req: Request, res: Response) => {
       });
     }
 
-    const decisionDocument = generateDecisionDocument(caseItem.title, caseItem.involvedPerson, opinion);
-
-    const trial = dataStore.createTrial({
+    const trialData: any = {
       caseId: id,
       reviewer: userId,
-      opinion,
-      decisionDocument,
-    });
+      opinion: opinion || reviewOpinion,
+    };
+
+    if (reviewOpinion) {
+      trialData.reviewOpinion = reviewOpinion;
+    }
+
+    let trial;
+    const existingTrial = caseItem.trialRecord;
+    
+    if (existingTrial) {
+      trial = dataStore.updateTrial(existingTrial.id, trialData);
+    } else {
+      const decisionDocument = generateDecisionDocument(caseItem.title, caseItem.involvedPerson, opinion || reviewOpinion);
+      trial = dataStore.createTrial({
+        ...trialData,
+        decisionDocument,
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -119,9 +142,16 @@ router.post('/:id/review', (req: Request, res: Response) => {
 
 router.post('/:id/sign', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const { signature } = req.body;
-    const { userId } = extractUserFromHeader(req);
 
     if (!signature) {
       return res.status(400).json({
@@ -140,7 +170,10 @@ router.post('/:id/sign', (req: Request, res: Response) => {
       });
     }
 
-    const updated = dataStore.updateTrial(trial.id, { signature });
+    const updated = dataStore.updateTrial(trial.id, { 
+      signature, 
+      signedAt: new Date().toISOString() 
+    });
 
     res.json({
       success: true,
@@ -156,8 +189,132 @@ router.post('/:id/sign', (req: Request, res: Response) => {
   }
 });
 
+router.post('/:id/decision', (req: Request, res: Response) => {
+  try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { id } = req.params;
+    const { disciplineType, decisionContent } = req.body;
+
+    if (!disciplineType || !decisionContent) {
+      return res.status(400).json({
+        success: false,
+        error: '请选择处分类型并填写处分内容',
+      });
+    }
+
+    const caseItem = dataStore.getCaseById(id);
+    if (!caseItem) {
+      return res.status(404).json({
+        success: false,
+        error: '案件不存在',
+      });
+    }
+
+    const trial = caseItem.trialRecord;
+    if (!trial) {
+      return res.status(400).json({
+        success: false,
+        error: '请先完成审理',
+      });
+    }
+
+    const updated = dataStore.updateTrial(trial.id, {
+      disciplineType: disciplineType as any,
+      decisionContent,
+    });
+
+    if (caseItem) {
+      caseItem.status = 'pending_execution';
+      dataStore.updateCase(caseItem.id, { status: 'pending_execution' });
+    }
+
+    res.json({
+      success: true,
+      data: updated as TrialRecord,
+      message: '处分决定书生成成功',
+    });
+  } catch (error) {
+    console.error('Generate decision error:', error);
+    res.status(500).json({
+      success: false,
+      error: '生成处分决定书失败',
+    });
+  }
+});
+
+router.post('/:id/execute', (req: Request, res: Response) => {
+  try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { id } = req.params;
+
+    const caseItem = dataStore.getCaseById(id);
+    if (!caseItem) {
+      return res.status(404).json({
+        success: false,
+        error: '案件不存在',
+      });
+    }
+
+    const trial = caseItem.trialRecord;
+    if (!trial || !trial.decisionContent || !trial.signature) {
+      return res.status(400).json({
+        success: false,
+        error: '请先完成审理、生成决定书并签名',
+      });
+    }
+
+    const updated = dataStore.updateTrial(trial.id, {
+      executionPushed: true,
+      executionPushedAt: new Date().toISOString(),
+    });
+
+    if (caseItem) {
+      caseItem.status = 'closed';
+      caseItem.currentStage = 'closed';
+      dataStore.updateCase(caseItem.id, { 
+        status: 'closed', 
+        currentStage: 'closed' 
+      });
+    }
+
+    res.json({
+      success: true,
+      data: updated as TrialRecord,
+      message: '已推送至相关部门执行',
+    });
+  } catch (error) {
+    console.error('Push execution error:', error);
+    res.status(500).json({
+      success: false,
+      error: '推送执行失败',
+    });
+  }
+});
+
 router.get('/:id/decision', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
 
     const trials = dataStore.getTrials();

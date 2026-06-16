@@ -279,6 +279,14 @@ export const DEPARTMENTS = [
   '党风政风监督室',
 ];
 
+export const PETITION_TYPE_TO_DEPARTMENT: Record<PetitionType, string> = {
+  corruption: '第一纪检监察室',
+  dereliction: '第二纪检监察室',
+  malfeasance: '第三纪检监察室',
+  style: '党风政风监督室',
+  other: '信访室',
+};
+
 export const RISK_LEVEL_COLORS: Record<RiskLevel, string> = {
   low: 'bg-green-100 text-green-800',
   medium: 'bg-yellow-100 text-yellow-800',

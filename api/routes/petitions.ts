@@ -22,8 +22,15 @@ const extractUserFromHeader = (req: Request): { userId?: string; role?: UserRole
 
 router.get('/', (req: Request, res: Response) => {
   try {
-    const { status, type, department } = req.query;
     const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { status, type, department } = req.query;
 
     const filters = {
       status: status as string | undefined,
@@ -93,7 +100,6 @@ router.post('/', (req: Request, res: Response) => {
       informant,
       informantContact,
       amount: amount ? Number(amount) : undefined,
-      assignedDepartment,
     });
 
     res.status(201).json({
@@ -140,6 +146,14 @@ router.put('/:id', (req: Request, res: Response) => {
 
 router.put('/:id/assign', (req: Request, res: Response) => {
   try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
     const { id } = req.params;
     const { assignedTo, assignedDepartment } = req.body;
 
@@ -166,6 +180,40 @@ router.put('/:id/assign', (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: '分配失败',
+    });
+  }
+});
+
+router.put('/:id/convert', (req: Request, res: Response) => {
+  try {
+    const { userId, role } = extractUserFromHeader(req);
+    if (!userId || !role) {
+      return res.status(401).json({
+        success: false,
+        error: '未授权访问',
+      });
+    }
+
+    const { id } = req.params;
+    const clue = dataStore.convertPetitionToClue(id);
+    
+    if (!clue) {
+      return res.status(404).json({
+        success: false,
+        error: '信访举报不存在',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: clue,
+      message: '已成功转为线索',
+    });
+  } catch (error) {
+    console.error('Convert petition to clue error:', error);
+    res.status(500).json({
+      success: false,
+      error: '转线索失败',
     });
   }
 });
